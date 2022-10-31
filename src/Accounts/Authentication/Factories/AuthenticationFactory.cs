@@ -573,13 +573,13 @@ namespace Microsoft.Azure.Commands.Common.Authentication.Factories
                     password = password ?? account.GetProperty(AzureAccount.Property.ServicePrincipalSecret)?.ConvertToSecureString();
                     if (password == null)
                     {
-                        password = KeyStore.GetKey(new ServicePrincipalKey(AzureAccount.Property.ServicePrincipalSecret
+                        password = KeyStore.GetKey<SecureString>(new ServicePrincipalKey(AzureAccount.Property.ServicePrincipalSecret
                         , account.Id, tenant));
                     }
                     var certificatePassword = account.GetProperty(AzureAccount.Property.CertificatePassword)?.ConvertToSecureString();
                     if (certificatePassword == null)
                     {
-                        certificatePassword = KeyStore.GetKey(new ServicePrincipalKey(AzureAccount.Property.CertificatePassword
+                        certificatePassword = KeyStore.GetKey<SecureString>(new ServicePrincipalKey(AzureAccount.Property.CertificatePassword
                         , account.Id, tenant));
                     }
                     return new ServicePrincipalParameters(tokenCacheProvider, environment, tokenCache, tenant, resourceId, account.Id, account.GetProperty(AzureAccount.Property.CertificateThumbprint), account.GetProperty(AzureAccount.Property.CertificatePath),

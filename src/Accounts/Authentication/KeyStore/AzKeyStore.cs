@@ -12,15 +12,12 @@
 // limitations under the License.
 // ----------------------------------------------------------------------------------
 
-using Microsoft.Azure.Commands.Common.Authentication.Abstractions.Core;
-using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
 using Microsoft.Identity.Client.Extensions.Msal;
-using Microsoft.WindowsAzure.Commands.Common;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Microsoft.Azure.Commands.ResourceManager.Common
@@ -31,12 +28,22 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
 
         internal class KeyStoreElement
         {
-            public string keyStoreKey;
             public string keyType;
-            public string secret;
+            public string keyStoreKey;
+            public string valueType;
+            public string keyStoreValue;
         }
 
-        private static IDictionary<IKeyStoreKey, SecureString> _credentials = new Dictionary<IKeyStoreKey, SecureString>();
+        private static IDictionary<Type, string> _typeNameMap = new ConcurrentDictionary<Type, string>();
+        private static IDictionary<string, JsonConverter> _elementConverterMap = new ConcurrentDictionary<string, JsonConverter>();
+
+        public static void RegisterJsonConverter(Type type, JsonConverter converter)
+        {
+            _typeNameMap[type] = type.FullName.Split('.').LastOrDefault();
+            _elementConverterMap[_typeNameMap[type]] = converter;
+        }
+
+        private IDictionary<IKeyStoreKey, Object> _credentials = new ConcurrentDictionary<IKeyStoreKey, Object>();
         Storage _storage = null;
         bool autoSave = true;
         Exception lastError = null;
@@ -51,24 +58,6 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
         public AzKeyStore()
         {
 
-        }
-
-        [Obsolete("The constructor is deprecated. Will read key from encryted storage later.", false)]
-        public AzKeyStore(IAzureContextContainer profile)
-        {
-            if (profile != null && profile.Accounts != null)
-            {
-                foreach (var account in profile.Accounts)
-                {
-                    if (account != null && account.ExtendedProperties.ContainsKey(AzureAccount.Property.ServicePrincipalSecret))
-                    {
-                        IKeyStoreKey keyStoreKey = new ServicePrincipalKey(AzureAccount.Property.ServicePrincipalSecret, account.Id
-                            , account.GetTenants().FirstOrDefault());
-                        var servicePrincipalSecret = account.ExtendedProperties[AzureAccount.Property.ServicePrincipalSecret];
-                        _credentials[keyStoreKey] = servicePrincipalSecret.ConvertToSecureString();
-                    }
-                }
-            }
         }
 
         public AzKeyStore(string directory, string fileName, bool loadStorage = true, bool autoSaveEnabled = true)
@@ -108,11 +97,13 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
                 {
                     foreach (var item in serializableKeyStore)
                     {
-                        Type type = Type.GetType(item.keyType);
-                        IKeyStoreKey keyStoreKey = JsonConvert.DeserializeObject(item.keyStoreKey, type) as IKeyStoreKey;
-                        if (keyStoreKey != null)
+                        if (_elementConverterMap.ContainsKey(item.keyType))
                         {
-                            _credentials[keyStoreKey] = item.secret.ConvertToSecureString();
+                            IKeyStoreKey keyStoreKey = JsonConvert.DeserializeObject<Object>(item.keyStoreKey, _elementConverterMap[item.keyType]) as IKeyStoreKey ;
+                            if (keyStoreKey != null && _elementConverterMap.ContainsKey(item.valueType))
+                            {
+                                _credentials[keyStoreKey] = JsonConvert.DeserializeObject<object>(item.keyStoreValue, _elementConverterMap[item.valueType]);
+                            }
                         }
                     }
                 }
@@ -129,15 +120,18 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             IList<KeyStoreElement> serializableKeyStore = new List<KeyStoreElement>();
             foreach (var item in _credentials)
             {
-                string key = JsonConvert.SerializeObject(item.Key);
+                var keyType = _typeNameMap[item.Key.GetType()];
+                var key = JsonConvert.SerializeObject(item.Key, _elementConverterMap[keyType]);
                 if (!string.IsNullOrEmpty(key))
                 {
+                    var valueType = _typeNameMap[item.Value.GetType()];
                     serializableKeyStore.Add(new KeyStoreElement()
                     {
                         keyStoreKey = key,
-                        keyType = item.Key.GetType().FullName,
-                        secret = item.Value.ConvertToString()
-                    });
+                        keyType = keyType,
+                        keyStoreValue = JsonConvert.SerializeObject(item.Value, _elementConverterMap[valueType]),
+                        valueType = valueType
+                    }) ;
                 }
             }
 
@@ -157,16 +151,20 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             ClearCache();
         }
 
-        public void SaveKey(IKeyStoreKey key, SecureString value)
+        public void SaveKey<T>(IKeyStoreKey key, T value) where T : class
         {
+            if (!_typeNameMap.ContainsKey(key.GetType()) || !_typeNameMap.ContainsKey(value.GetType()))
+            {
+                throw new InvalidOperationException("Please register key & values type before save it.");
+            }
             _credentials[key] = value;
         }
 
-        public SecureString GetKey(IKeyStoreKey key)
+        public T GetKey<T>(IKeyStoreKey key) where T : class
         {
             if (_credentials.ContainsKey(key))
             {
-                return _credentials[key];
+                return _credentials[key] as T;
             }
             return null;
         }
