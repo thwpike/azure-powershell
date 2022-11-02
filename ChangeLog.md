@@ -1,4 +1,4 @@
-## 8.3.0 - September 2022
+## 8.3.0 - September 2022a
 #### Az.Accounts
 * Supported returning all subscriptions with specified name while using 'Get-AzSubscription' with parameter 'SubscriptionName'. [#19295]
 * Fixed null reference exception when cmdlet uses AzureRestOperation [#18104]
