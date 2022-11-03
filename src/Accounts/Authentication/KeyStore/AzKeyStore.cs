@@ -35,12 +35,30 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
         }
 
         private static IDictionary<Type, string> _typeNameMap = new ConcurrentDictionary<Type, string>();
+
         private static IDictionary<string, JsonConverter> _elementConverterMap = new ConcurrentDictionary<string, JsonConverter>();
 
-        public static void RegisterJsonConverter(Type type, JsonConverter converter)
+        public static void RegisterJsonConverter(Type type, string typeName, JsonConverter converter = null)
         {
-            _typeNameMap[type] = type.FullName.Split('.').LastOrDefault();
-            _elementConverterMap[_typeNameMap[type]] = converter;
+            if (string.IsNullOrEmpty(typeName))
+            {
+                throw new ArgumentNullException($"typeName cannot be empty.");
+            }
+            if (_typeNameMap.ContainsKey(type))
+            {
+                if (string.Compare(_typeNameMap[type], typeName) != 0)
+                {
+                    throw new ArgumentException($"{typeName} has conflict with {_typeNameMap[type]} with reference to {type}.");
+                }
+            }
+            else
+            {
+                _typeNameMap[type] = typeName;
+            }
+            if (converter != null)
+            {
+                _elementConverterMap[_typeNameMap[type]] = converter;
+            }
         }
 
         private IDictionary<IKeyStoreKey, Object> _credentials = new ConcurrentDictionary<IKeyStoreKey, Object>();
@@ -68,7 +86,9 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             {
                 storageProperties = new StorageCreationPropertiesBuilder(fileName, directory)
                     .WithMacKeyChain(KeyChainServiceName + ".other_secrets", fileName)
-                    .WithLinuxUnprotectedFile();
+                    .WithLinuxKeyring("keystore.cache", "default", "KeyStoreCache"
+                    , LinuxKeyRingAttr1, LinuxKeyRingAttr2);
+
                 _storage = Storage.Create(storageProperties.Build());
                 _storage.VerifyPersistence();
             }
@@ -81,33 +101,66 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             }
             if (loadStorage)
             {
-                LoadStorage();
+                if (!LoadStorage())
+                {
+                    throw new InvalidOperationException("Failed to load keystore from storage.");
+                }
             }
         }
 
-        public void LoadStorage()
+        private object Deserialize(string typeName, string value)
         {
-            _storage.VerifyPersistence();
-            var data = _storage.ReadData();
-            if (data != null && data.Length > 0)
+            Type t = null;
+            t = _typeNameMap.FirstOrDefault(item => item.Value == typeName).Key;
+
+            if (t != null)
             {
-                var rawJsonString = Encoding.UTF8.GetString(data);
-                var serializableKeyStore = JsonConvert.DeserializeObject(rawJsonString, typeof(List<KeyStoreElement>)) as List<KeyStoreElement>;
-                if (serializableKeyStore != null)
+                if (_elementConverterMap.ContainsKey(typeName))
                 {
-                    foreach (var item in serializableKeyStore)
+                    return JsonConvert.DeserializeObject(value, t, _elementConverterMap[typeName]);
+                }
+                else
+                {
+                    return JsonConvert.DeserializeObject(value, t);
+                }
+            }
+            return null;
+        }
+
+        public bool LoadStorage()
+        {
+            try
+            {
+                var data = _storage.ReadData();
+                if (data != null && data.Length > 0)
+                {
+                    var rawJsonString = Encoding.UTF8.GetString(data);
+                    var serializableKeyStore = JsonConvert.DeserializeObject(rawJsonString, typeof(List<KeyStoreElement>)) as List<KeyStoreElement>;
+                    if (serializableKeyStore != null)
                     {
-                        if (_elementConverterMap.ContainsKey(item.keyType))
+                        foreach (var item in serializableKeyStore)
                         {
-                            IKeyStoreKey keyStoreKey = JsonConvert.DeserializeObject<Object>(item.keyStoreKey, _elementConverterMap[item.keyType]) as IKeyStoreKey ;
-                            if (keyStoreKey != null && _elementConverterMap.ContainsKey(item.valueType))
+                            IKeyStoreKey keyStoreKey = Deserialize(item.keyType, item.keyStoreKey) as IKeyStoreKey;
+                            if (keyStoreKey == null)
                             {
-                                _credentials[keyStoreKey] = JsonConvert.DeserializeObject<object>(item.keyStoreValue, _elementConverterMap[item.valueType]);
+                                throw new ArgumentException($"Cannot parse the keystore {item.keyStoreKey} with the type {item.keyType}.");
                             }
+                            var keyStoreValue = Deserialize(item.valueType, item.keyStoreValue);
+                            if (keyStoreValue == null)
+                            {
+                                throw new ArgumentException($"Cannot parse the keystore {item.keyStoreValue} with the type {item.valueType}.");
+                            }
+                            _credentials[keyStoreKey] = keyStoreValue;
                         }
                     }
                 }
             }
+            catch (Exception e)
+            {
+                lastError = e;
+                return false;
+            }
+            return true;
         }
 
         public void ClearCache()
@@ -121,16 +174,18 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             foreach (var item in _credentials)
             {
                 var keyType = _typeNameMap[item.Key.GetType()];
-                var key = JsonConvert.SerializeObject(item.Key, _elementConverterMap[keyType]);
+                var key = _elementConverterMap.ContainsKey(keyType) ?
+                      JsonConvert.SerializeObject(item.Key, _elementConverterMap[keyType]) : JsonConvert.SerializeObject(item.Key);
                 if (!string.IsNullOrEmpty(key))
                 {
                     var valueType = _typeNameMap[item.Value.GetType()];
                     serializableKeyStore.Add(new KeyStoreElement()
                     {
-                        keyStoreKey = key,
                         keyType = keyType,
-                        keyStoreValue = JsonConvert.SerializeObject(item.Value, _elementConverterMap[valueType]),
-                        valueType = valueType
+                        keyStoreKey = key,
+                        valueType = valueType,
+                        keyStoreValue = _elementConverterMap.ContainsKey(valueType) ?
+                                        JsonConvert.SerializeObject(item.Value, _elementConverterMap[valueType]) : JsonConvert.SerializeObject(item.Value),
                     }) ;
                 }
             }
@@ -151,7 +206,7 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             ClearCache();
         }
 
-        public void SaveKey<T>(IKeyStoreKey key, T value) where T : class
+        public void SaveKey<T>(IKeyStoreKey key, T value)
         {
             if (!_typeNameMap.ContainsKey(key.GetType()) || !_typeNameMap.ContainsKey(value.GetType()))
             {
@@ -160,13 +215,13 @@ namespace Microsoft.Azure.Commands.ResourceManager.Common
             _credentials[key] = value;
         }
 
-        public T GetKey<T>(IKeyStoreKey key) where T : class
+        public T GetKey<T>(IKeyStoreKey key)
         {
-            if (_credentials.ContainsKey(key))
+            if (!_credentials.ContainsKey(key))
             {
-                return _credentials[key] as T;
+                throw new ArgumentException($"{key.ToString()} is not stored in AzKeyStore yet.");
             }
-            return null;
+            return (T)_credentials[key];
         }
 
         public bool DeleteKey(IKeyStoreKey key)

@@ -714,8 +714,8 @@ namespace Microsoft.Azure.Commands.Profile
                 AzKeyStore keyStore = null;
                 //AzureSession.Instance.KeyStoreFile
                 keyStore = new AzKeyStore(AzureSession.Instance.ARMProfileDirectory, "keystore.cache", false, autoSaveEnabled);
-                AzKeyStore.RegisterJsonConverter(typeof(ServicePrincipalKey), new ServicePrincipalKeyConverter());
-                AzKeyStore.RegisterJsonConverter(typeof(SecureString), new SecureStringConverter());
+                AzKeyStore.RegisterJsonConverter(typeof(ServicePrincipalKey), typeof(ServicePrincipalKey).Name);
+                AzKeyStore.RegisterJsonConverter(typeof(SecureString), typeof(SecureString).Name, new SecureStringConverter());
                 AzureSession.Instance.RegisterComponent(AzKeyStore.Name, () => keyStore);
 
                 if (!InitializeProfileProvider(autoSaveEnabled))
@@ -724,7 +724,10 @@ namespace Microsoft.Azure.Commands.Profile
                     autoSaveEnabled = false;
                 }
 
-                keyStore.LoadStorage();
+                if (!keyStore.LoadStorage())
+                {
+                    WriteInitializationWarnings(Resources.KeyStoreLoadingError);
+                }
 
                 IAuthenticatorBuilder builder = null;
                 if (!AzureSession.Instance.TryGetComponent(AuthenticatorBuilder.AuthenticatorBuilderKey, out builder))
