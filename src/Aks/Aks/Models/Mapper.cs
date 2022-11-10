@@ -62,6 +62,8 @@ namespace Microsoft.Azure.Commands.Aks.Models
                 cfg.CreateMap<AgentPool, PSNodePool>().ReverseMap();
                 cfg.CreateMap<SubResource, PSSubResource>().ReverseMap();
                 cfg.CreateMap<RunCommandResult, PSRunCommandResult>().ReverseMap();
+                cfg.ShouldMapMethod = _ => false;
+                cfg.ShouldUseConstructor = _ => false;
             });
             _instance = config.CreateMapper();
         }

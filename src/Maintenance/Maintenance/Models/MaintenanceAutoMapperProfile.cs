@@ -119,7 +119,8 @@ namespace Microsoft.Azure.Commands.Maintenance.Models
                     .ForMember(dest => dest.SystemData, s => s.Ignore());
                 cfg.CreateMap<FROM.Update, TO.PSUpdate>();
                 cfg.CreateMap<TO.PSUpdate, FROM.Update>();
-
+                cfg.ShouldMapMethod = _ => false;
+                cfg.ShouldUseConstructor = _ => false;
             });
             _mapper = config.CreateMapper();
             config.AssertConfigurationIsValid();

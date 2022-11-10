@@ -1604,7 +1604,8 @@ namespace Microsoft.Azure.Commands.Network
                 cfg.CreateMap<MNM.AdminRuleCollection, ANM.PSNetworkManagerSecurityAdminRuleCollection>();
                 cfg.CreateMap<MNM.ScopeConnection, ANM.PSNetworkManagerScopeConnection>();
                 cfg.CreateMap<MNM.NetworkManagerConnection, ANM.PSNetworkManagerConnection>();
-
+                cfg.ShouldMapMethod = _ => false;
+                cfg.ShouldUseConstructor = _ => false;
             });
             _mapper = config.CreateMapper();
         }
