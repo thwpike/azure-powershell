@@ -33,6 +33,19 @@ namespace Microsoft.Azure.PowerShell.Authenticators
         //MSAL doesn't cache Service Principal into msal.cache
         public override Task<IAccessToken> Authenticate(AuthenticationParameters parameters, CancellationToken cancellationToken)
         {
+            // try
+            // {
+            //     return Task.FromResult<IAccessToken>(AuthenticateSilently(parameters, cancellationToken));
+            // }
+            // catch (Exception ex)
+            // {
+            //     Debug.Write($"Message = [{ex.Message}]; Type = [{ex.GetType()}]; StackTrace = [{ex.StackTrace}]");
+                return AuthenticateExplicitly(parameters, cancellationToken);
+            // }
+        }
+
+        public Task<IAccessToken> AuthenticateExplicitly(AuthenticationParameters parameters, CancellationToken cancellationToken)
+        {
             var spParameters = parameters as ServicePrincipalParameters;
             var onPremise = spParameters.Environment.OnPremise;
             var tenantId = onPremise ? AdfsTenant :
@@ -45,8 +58,10 @@ namespace Microsoft.Azure.PowerShell.Authenticators
             var requestContext = new TokenRequestContext(scopes);
             AzureSession.Instance.TryGetComponent(nameof(AzureCredentialFactory), out AzureCredentialFactory azureCredentialFactory);
 
+            TokenCachePersistenceOptions tokenCachePersistenceOptions = spParameters.TokenCacheProvider.GetTokenCachePersistenceOptions();
             var options = new ClientCertificateCredentialOptions()
             {
+                TokenCachePersistenceOptions = tokenCachePersistenceOptions,
                 AuthorityHost = new Uri(authority),
                 SendCertificateChain = spParameters.SendCertificateChain ?? default(bool)
             };
@@ -63,10 +78,15 @@ namespace Microsoft.Azure.PowerShell.Authenticators
             else if (spParameters.Secret != null)
             {
                 //Service principal with secret
-                tokenCredential = azureCredentialFactory.CreateClientSecretCredential(tenantId, spParameters.ApplicationId, spParameters.Secret, options);
+                var csOptions = new ClientSecretCredentialOptions()
+                {
+                    TokenCachePersistenceOptions = tokenCachePersistenceOptions,
+                    AuthorityHost = new Uri(authority)
+                };
+                tokenCredential = azureCredentialFactory.CreateClientSecretCredential(tenantId, spParameters.ApplicationId, spParameters.Secret, csOptions);
                 parametersLog = $"- ApplicationId:'{spParameters.ApplicationId}', TenantId:'{tenantId}', Scopes:'{string.Join(",", scopes)}', AuthorityHost:'{options.AuthorityHost}'";
             }
-            else if(!string.IsNullOrEmpty(spParameters.CertificatePath))
+            else if (!string.IsNullOrEmpty(spParameters.CertificatePath))
             {
                 if (spParameters.CertificateSecret != null)
                 {
@@ -95,6 +115,40 @@ namespace Microsoft.Azure.PowerShell.Authenticators
                 spParameters.TenantId,
                 spParameters.ApplicationId);
         }
+
+        // public IAccessToken AuthenticateSilently(AuthenticationParameters parameters, CancellationToken cancellationToken)
+        // {
+        //     var spParameters = parameters as ServicePrincipalParameters;
+        //     var onPremise = spParameters.Environment.OnPremise;
+        //     var tenantId = onPremise ? AdfsTenant :
+        //         (string.Equals(parameters.TenantId, OrganizationsTenant, StringComparison.OrdinalIgnoreCase) ? null : parameters.TenantId);
+        //     var resource = spParameters.Environment.GetEndpoint(spParameters.ResourceId) ?? spParameters.ResourceId;
+        //     var scopes = AuthenticationHelpers.GetScope(onPremise, resource);
+        //     var authority = spParameters.Environment.ActiveDirectoryAuthority;
+        //     var tokenCacheProvider = spParameters.TokenCacheProvider;
+
+        //     AzureSession.Instance.TryGetComponent(nameof(AzureCredentialFactory), out AzureCredentialFactory azureCredentialFactory);
+        //     var options = new SharedTokenCacheCredentialOptions(tokenCacheProvider.GetTokenCachePersistenceOptions())
+        //     {
+        //         EnableGuestTenantAuthentication = true,
+        //         ClientId = AuthenticationHelpers.PowerShellClientId,
+        //         Username = spParameters.ApplicationId, // no user name for SP
+        //         AuthorityHost = new Uri(authority),
+        //         TenantId = tenantId,
+        //     };
+        //     var cacheCredential = azureCredentialFactory.CreateSharedTokenCacheCredentials(options);
+        //     var requestContext = new TokenRequestContext(scopes);
+        //     var parametersLog = $"- TenantId:'{options.TenantId}', Scopes:'{string.Join(",", scopes)}', AuthorityHost:'{options.AuthorityHost}', UserId:'null'";
+        //     return MsalAccessToken.GetAccessTokenAsync(
+        //         nameof(ServicePrincipalAuthenticator),
+        //         parametersLog,
+        //         cacheCredential,
+        //         requestContext,
+        //         cancellationToken,
+        //         spParameters.TenantId,
+        //         spParameters.ApplicationId).ConfigureAwait(false).GetAwaiter().GetResult();
+        //     // spParameters.HomeAccountId);
+        // }
 
         public override bool CanAuthenticate(AuthenticationParameters parameters)
         {
