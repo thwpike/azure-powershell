@@ -21,7 +21,7 @@ pac19,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.ChangeA
 pac20,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.CloudService,1.1.0
 pac21,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.CognitiveServices,1.12.0
 pac22,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.Communication,0.2.0
-pac23,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.Compute,5.1.0
+pac23,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.Compute,5.2.0
 pac24,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.ConfidentialLedger,1.0.0
 pac25,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.Confluent,0.2.0
 pac26,[ps=true;customSource=https://www.powershellgallery.com/api/v2/]Az.ConnectedKubernetes,0.5.0
