@@ -218,11 +218,11 @@ If ($StaticAnalysis)
     {
         $Parameters["TargetModule"] = $TargetModule
     }
-    ./ExecuteCIStep.ps1 -StaticAnalysisBreakingChange @Parameters
-    ./ExecuteCIStep.ps1 -StaticAnalysisDependency @Parameters
-    ./ExecuteCIStep.ps1 -StaticAnalysisSignature @Parameters
-    ./ExecuteCIStep.ps1 -StaticAnalysisHelp @Parameters
-    ./ExecuteCIStep.ps1 -StaticAnalysisUX @Parameters
+    .("$PSScriptRoot/ExecuteCIStep.ps1") -StaticAnalysisBreakingChange @Parameters
+    .("$PSScriptRoot/ExecuteCIStep.ps1") -StaticAnalysisDependency @Parameters
+    .("$PSScriptRoot/ExecuteCIStep.ps1") -StaticAnalysisSignature @Parameters
+    .("$PSScriptRoot/ExecuteCIStep.ps1") -StaticAnalysisHelp @Parameters
+    .("$PSScriptRoot/ExecuteCIStep.ps1") -StaticAnalysisUX @Parameters
 }
 
 If ($StaticAnalysisBreakingChange)
